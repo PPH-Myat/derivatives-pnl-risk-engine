@@ -58,11 +58,11 @@ const Market& VolDecorator::getOriginMarket() const { return originMarket; }
 const Market& VolDecorator::getMarket() const { return thisMarket; }
 
 // ========================
-// PriceDecorator (not used)
+// PriceDecorator (Optional)
 // ========================
 PriceDecorator::PriceDecorator(const Market& mkt, const MarketShock& shock)
     : thisMarket(mkt) {
-    // Optional: implement price shock if needed
+    // Add logic if you plan to shock stock/bond prices
 }
 
 const Market& PriceDecorator::getMarket() const { return thisMarket; }
@@ -82,58 +82,75 @@ RiskEngine::RiskEngine(const Market& market, double curve_shock, double vol_shoc
 
     MarketShock volBump{ "LOGVOL", { bumpTenor, vol_shock } };
     volShocks.emplace("LOGVOL", VolDecorator(market, volBump));
-
-    // priceShock currently unused
 }
 
 // ========================
 // computeRisk
 // ========================
-void RiskEngine::computeRisk(string riskType, shared_ptr<Trade> trade, bool singleThread) {
+
+void RiskEngine::computeRisk(string riskType, shared_ptr<Trade> trade, bool singleThread)
+{
     result.clear();
 
     if (singleThread) {
         if (riskType == "dv01") {
-            for (const auto& [market_id, decorator] : curveShocks) {
-                double pv_up = trade->price(decorator.getMarketUp());
-                double pv_down = trade->price(decorator.getMarketDown());
-                result[market_id] = (pv_up - pv_down);  // caller will divide by 2 × shock
+            for (auto& kv : curveShocks) {
+                const string& market_id = kv.first;
+                const Market& mkt_up = kv.second.getMarketUp();
+                const Market& mkt_down = kv.second.getMarketDown();
+
+                double pv_up = trade->pv(mkt_up);
+                double pv_down = trade->pv(mkt_down);
+                double dv01 = (pv_up - pv_down) / (2.0 * curveShockSize);  // Normalize
+
+                result.emplace(market_id, dv01);
             }
         }
-        else if (riskType == "vega") {
-            for (const auto& [market_id, decorator] : volShocks) {
-                double pv_base = trade->price(decorator.getOriginMarket());
-                double pv_bump = trade->price(decorator.getMarket());
-                result[market_id] = (pv_bump - pv_base);  // caller will divide by shock
+
+        if (riskType == "vega") {
+            for (auto& kv : volShocks) {
+                const string& market_id = kv.first;
+                const Market& mkt_base = kv.second.getOriginMarket();
+                const Market& mkt_bump = kv.second.getMarket();
+
+                double pv_base = trade->pv(mkt_base);
+                double pv_up = trade->pv(mkt_bump);
+                double vega = (pv_up - pv_base) / volShockSize;  // Normalize
+
+                result.emplace(market_id, vega);
             }
+        }
+
+        if (riskType == "price") {
+            // Optional: implement stock/bond price shock logic here
         }
     }
     else {
-        using Result = pair<string, double>;
-        vector<future<Result>> tasks;
+        auto async_task = [](shared_ptr<Trade> trade, const string& id, const Market& up, const Market& down, double bumpSize) {
+            double pv_up = trade->pv(up);
+            double pv_down = trade->pv(down);
+            return make_pair(id, (pv_up - pv_down) / (2.0 * bumpSize));
+            };
+
+        vector<future<pair<string, double>>> tasks;
 
         if (riskType == "dv01") {
-            for (const auto& [id, decorator] : curveShocks) {
-                tasks.emplace_back(async(launch::async, [=]() {
-                    double pv_up = trade->price(decorator.getMarketUp());
-                    double pv_down = trade->price(decorator.getMarketDown());
-                    return make_pair(id, (pv_up - pv_down));
-                    }));
-            }
-        }
-        else if (riskType == "vega") {
-            for (const auto& [id, decorator] : volShocks) {
-                tasks.emplace_back(async(launch::async, [=]() {
-                    double pv_bump = trade->price(decorator.getMarket());
-                    double pv_base = trade->price(decorator.getOriginMarket());
-                    return make_pair(id, (pv_bump - pv_base));
-                    }));
+            for (const auto& kv : curveShocks) {
+                tasks.push_back(async(launch::async, async_task,
+                    trade, kv.first, kv.second.getMarketUp(), kv.second.getMarketDown(), curveShockSize));
             }
         }
 
-        for (auto& task : tasks) {
-            auto [id, value] = task.get();
-            result[id] = value;
+        if (riskType == "vega") {
+            for (const auto& kv : volShocks) {
+                tasks.push_back(async(launch::async, async_task,
+                    trade, kv.first, kv.second.getMarket(), kv.second.getOriginMarket(), volShockSize));
+            }
+        }
+
+        for (auto& fut : tasks) {
+            auto [id, val] = fut.get();
+            result.emplace(id, val);
         }
     }
 }
