@@ -19,7 +19,7 @@ public:
         const Date& start,
         const Date& end,
         double notional,
-        double strike,
+        double param1,       // Could be rate, price, or strike
         double freq,
         OptionType opt) const = 0;
 
@@ -53,13 +53,12 @@ public:
         const Date& start,
         const Date& end,
         double notional,
-        double price,
+        double rate,
         double freq,
         OptionType /*opt*/) const override {
-        int intFreq = static_cast<int>(1.0 / freq);
-        if (intFreq <= 0)
+        if (freq <= 0 || freq > 1)
             throw std::invalid_argument("Invalid bond frequency.");
-        return std::make_shared<Bond>(underlying, start, end, notional, intFreq, price, 0.04); // default 4% coupon
+        return std::make_shared<Bond>(underlying, start, end, notional, rate, freq);
     }
 };
 
