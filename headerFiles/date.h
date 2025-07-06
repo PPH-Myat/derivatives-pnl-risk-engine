@@ -19,9 +19,9 @@ public:
     Date(int y, int m, int d);          // Construct from year, month, day
 
     // === Accessors ===
-    int getYear() const { return year; }
-    int getMonth() const { return month; }
-    int getDay() const { return day; }
+    int getYear() const;
+    int getMonth() const;
+    int getDay() const;
 
     // === Mutators ===
     void setYear(int y);

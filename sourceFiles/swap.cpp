@@ -25,7 +25,7 @@ Swap::Swap(std::string name,
     tradeRate = _rate;
     frequency = _freq;
     rateCurve = to_upper(name);  // e.g., "USD-SOFR"
-    isLong = true;
+    isLong_ = true;
 
     generateSchedule();
 }
