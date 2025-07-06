@@ -1,6 +1,7 @@
 #include "swap.h"
 #include "market.h"
 #include "helper.h"
+
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
@@ -57,7 +58,7 @@ void Swap::generateSchedule()
 double Swap::getAnnuity(const Market& mkt) const
 {
     if (swapSchedule.empty())
-        const_cast<Swap*>(this)->generateSchedule();
+        const_cast<Swap*>(this)->generateSchedule();  // acceptable if swapSchedule is not mutable
 
     double annuity = 0.0;
     Date valueDate = mkt.asOf;
@@ -68,7 +69,7 @@ double Swap::getAnnuity(const Market& mkt) const
         if (dt < valueDate) continue;
 
         double tau = (swapSchedule[i] - swapSchedule[i - 1]) / 360.0;  // ACT/360
-        double df = rc.getDf(dt);
+        double df = rc->getDf(dt);
         annuity += notional * tau * df;
     }
 
@@ -83,7 +84,7 @@ double Swap::pv(const Market& mkt) const
     Date valueDate = mkt.asOf;
     const auto& rc = mkt.getCurve(rateCurve);
 
-    double df = rc.getDf(maturityDate);
+    double df = rc->getDf(maturityDate);
     double fltPv = notional * (1.0 - df);  // Floating leg PV
 
     double fixPv = 0.0;
@@ -92,12 +93,12 @@ double Swap::pv(const Market& mkt) const
         if (dt < valueDate) continue;
 
         double tau = (swapSchedule[i] - swapSchedule[i - 1]) / 360.0; // ACT/360
-        df = rc.getDf(dt);
+        df = rc->getDf(dt)
         fixPv += notional * tau * tradeRate * df;
     }
 
     double pv = fixPv + fltPv;
-    return isLong ? pv : -pv;
+    return isLong_ ? pv : -pv;
 }
 
 double Swap::price(const Market& mkt) const {
@@ -105,7 +106,7 @@ double Swap::price(const Market& mkt) const {
 }
 
 double Swap::payoff(double r) const {
-    return isLong ? (r - tradeRate) * notional : (tradeRate - r) * notional;
+    return isLong_ ? (r - tradeRate) * notional : (tradeRate - r) * notional;
 }
 
 double Swap::payoff(const Market& mkt) const {

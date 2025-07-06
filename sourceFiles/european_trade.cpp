@@ -80,7 +80,7 @@ double EuropeanOption::price(const Market& mkt) const {
 
 double EuropeanOption::pv(const Market& mkt) const {
     CRRBinomialTreePricer pricer(50);
-    return pricer.price(mkt, *this);
+    return pricer.price(mkt, std::make_shared<EuropeanOption>(*this));
 }
 
 const Date& EuropeanOption::getExpiry() const { return expiryDate; }
@@ -137,7 +137,7 @@ double EuroCallSpread::price(const Market& mkt) const {
 
 double EuroCallSpread::pv(const Market& mkt) const {
     CRRBinomialTreePricer pricer(50);
-    return pricer.price(mkt, *this);
+    return pricer.price(mkt, std::make_shared<EuroCallSpread>(*this));
 }
 
 const Date& EuroCallSpread::getExpiry() const { return expiryDate; }
