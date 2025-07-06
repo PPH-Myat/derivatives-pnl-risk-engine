@@ -29,7 +29,9 @@ public:
     std::shared_ptr<VolCurve> getVolCurve(const std::string& name) const;
     double getStockPrice(const std::string& stockName) const;
     double getBondPrice(const std::string& bondName) const;
-    const Date& getAsOf() const { return asOf; }
+    const Date& getAsOf() const { return asOf; };
+    void shockPrice(const std::string& symbol, double bump);
+
 
     // File loaders
     void loadCurveFromFile(const std::string& filename);

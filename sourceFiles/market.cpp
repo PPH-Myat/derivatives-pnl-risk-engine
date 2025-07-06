@@ -118,6 +118,18 @@ double Market::getBondPrice(const string& name) const {
     return it->second;
 }
 
+// ===== Shock a stock price by percentage bump =====
+void Market::shockPrice(const std::string& symbol, double bump) {
+    std::string key = toUpper(symbol);
+    auto it = stockPrices.find(key);
+    if (it != stockPrices.end()) {
+        it->second *= (1.0 + bump);
+    }
+    else {
+        std::cerr << "[WARN] Market::shockPrice - Stock not found: " << key << std::endl;
+    }
+}
+
 // ===== File loading methods =====
 
 void Market::loadCurveFromFile(const string& filename) {

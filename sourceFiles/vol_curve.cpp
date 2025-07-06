@@ -62,6 +62,17 @@ void VolCurve::shock(double delta) {
     for (auto& v : vols) v += delta;
 }
 
+// ===== Shock a specific tenor by delta =====
+void VolCurve::shock(const Date& tenor, double delta) {
+    for (size_t i = 0; i < tenors.size(); ++i) {
+        if (tenors[i] == tenor) {
+            vols[i] += delta;
+            return;
+        }
+    }
+    std::cerr << "[WARN] VolCurve::shock - Tenor not found: " << tenor << std::endl;
+}
+
 // ===== Load curve data from file =====
 void VolCurve::loadFromFile(const std::string& filename, const Date& asOf) {
     // Name is fixed for vol curve files (can be improved to parse from file)

@@ -23,6 +23,7 @@ public:
     double getVol(const Date& date) const;
 
     void shock(double delta);                // parallel shock all vols
+    void shock(const Date& tenor, double delta);  // point shock
 
     // Load curve data from file relative to a valuation date (asOf)
     void loadFromFile(const std::string& filename, const Date& asOf);
