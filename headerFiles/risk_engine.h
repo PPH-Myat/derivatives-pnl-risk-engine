@@ -1,13 +1,10 @@
 #pragma once
 
-#include <iostream>
-#include <string>
+#include <memory>
 #include <map>
-#include <unordered_map>
-#include <future>
-
-#include "trade.h"
+#include <string>
 #include "market.h"
+#include "trade.h"
 
 struct MarketShock {
     std::string market_id;
@@ -17,7 +14,6 @@ struct MarketShock {
 class CurveDecorator {
 public:
     CurveDecorator(const Market& mkt, const MarketShock& curveShock);
-
     const Market& getMarketUp() const;
     const Market& getMarketDown() const;
 
@@ -29,19 +25,17 @@ private:
 class VolDecorator {
 public:
     VolDecorator(const Market& mkt, const MarketShock& volShock);
-
-    const Market& getOriginMarket() const;
     const Market& getMarket() const;
+    const Market& getOriginMarket() const;
 
 private:
-    Market originMarket;
     Market thisMarket;
+    Market originMarket;
 };
 
 class PriceDecorator {
 public:
-    PriceDecorator(const Market& mkt, const MarketShock& priceShock);
-
+    PriceDecorator(const Market& mkt, const MarketShock& shock);
     const Market& getMarket() const;
 
 private:
@@ -52,13 +46,15 @@ class RiskEngine {
 public:
     RiskEngine(const Market& market, double curve_shock, double vol_shock, double price_shock);
 
-    void computeRisk(std::string riskType, std::shared_ptr<Trade> trade, bool singleThread);
+    void computeRisk(std::string riskType, std::shared_ptr<Trade> trade, bool singleThread = true);
     std::map<std::string, double> getResult() const;
 
 private:
-    std::unordered_map<std::string, CurveDecorator> curveShocks;
-    std::unordered_map<std::string, VolDecorator> volShocks;
-    std::unordered_map<std::string, PriceDecorator> priceShocks;
+    double curveShockSize;
+    double volShockSize;
+    double priceShockSize;
 
+    std::map<std::string, CurveDecorator> curveShocks;
+    std::map<std::string, VolDecorator> volShocks;
     std::map<std::string, double> result;
 };

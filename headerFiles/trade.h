@@ -7,7 +7,8 @@
 
 class Market;
 
-class Trade {
+// Add enable_shared_from_this
+class Trade : public std::enable_shared_from_this<Trade> {
 public:
     Trade() = default;
 
@@ -21,7 +22,7 @@ public:
     virtual double price(const Market& market) const = 0;
     virtual double pv(const Market& market) const = 0;
 
-    // === payoff Interfaces ===
+    // === Payoff Interfaces ===
     virtual double payoff(double marketPrice) const = 0;
     virtual double payoff(const Market& market) const = 0;
 

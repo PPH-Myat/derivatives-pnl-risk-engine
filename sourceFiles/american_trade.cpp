@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <sstream>
+#include <memory>
 
 using util::to_upper;
 
@@ -78,13 +79,21 @@ double AmericanOption::price(const Market& mkt) const {
 }
 
 double AmericanOption::pv(const Market& mkt) const {
-    CRRBinomialTreePricer pricer(50);
-    return pricer.price(mkt, std::make_shared<AmericanOption>(*this));
+    return pv(mkt, true);
+}
+
+double AmericanOption::pv(const Market& mkt, bool useTree) const {
+    if (useTree) {
+        CRRBinomialTreePricer pricer(50);
+        return pricer.price(mkt, std::const_pointer_cast<Trade>(shared_from_this()));
+    }
+    return payoff(mkt);  // fallback logic
 }
 
 const Date& AmericanOption::getExpiry() const { return expiryDate; }
 const Date& AmericanOption::getTradeDate() const { return tradeDate; }
 const std::string& AmericanOption::getRateCurve() const { return rateCurve; }
+
 
 // === AmerCallSpread ===
 
@@ -127,8 +136,15 @@ double AmerCallSpread::price(const Market& mkt) const {
 }
 
 double AmerCallSpread::pv(const Market& mkt) const {
-    CRRBinomialTreePricer pricer(50);
-    return pricer.price(mkt, std::make_shared<AmerCallSpread>(*this));
+    return pv(mkt, true);
+}
+
+double AmerCallSpread::pv(const Market& mkt, bool useTree) const {
+    if (useTree) {
+        CRRBinomialTreePricer pricer(50);
+        return pricer.price(mkt, std::const_pointer_cast<Trade>(shared_from_this()));
+    }
+    return payoff(mkt);
 }
 
 const Date& AmerCallSpread::getExpiry() const { return expiryDate; }

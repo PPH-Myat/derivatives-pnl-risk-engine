@@ -6,6 +6,8 @@
 #include "market.h"
 #include "trade.h"
 #include "tree_product.h"
+#include "european_trade.h"
+#include "american_trade.h" 
 
 // ===========================
 // BinomialTreePricer Base
@@ -13,18 +15,25 @@
 
 BinomialTreePricer::BinomialTreePricer(int N)
     : nTimeSteps(N), u(0), d(0), p(0), currentSpot(0) {
-    // states will be local to priceTree
 }
 
 double BinomialTreePricer::price(const Market& mkt, std::shared_ptr<Trade> trade) const {
-    if (!trade) throw std::invalid_argument("[ERROR] Null trade pointer passed to pricer.");
+    if (!trade) throw std::invalid_argument("Null trade pointer");
 
-    auto* treePtr = dynamic_cast<TreeProduct*>(trade.get());
+    auto treePtr = std::dynamic_pointer_cast<TreeProduct>(trade);
     if (!treePtr) {
-        return trade->pv(mkt);  // fallback to analytical PV if not tree-compatible
+        // === Safe fallback routing ===
+        if (auto opt = std::dynamic_pointer_cast<EuropeanOption>(trade))
+            return opt->pv(mkt, false);
+        if (auto spread = std::dynamic_pointer_cast<EuroCallSpread>(trade))
+            return spread->pv(mkt, false);
+        if (auto amer = std::dynamic_pointer_cast<AmericanOption>(trade))
+            return amer->pv(mkt, false);
+
+        return trade->pv(mkt);  // fallback for unknown tree-incompatible trades
     }
 
-    return priceTree(mkt, *treePtr) * trade->getNotional();
+    return priceTree(mkt, *treePtr) * (trade->isLong() ? 1.0 : -1.0);
 }
 
 double BinomialTreePricer::priceTree(const Market& mkt, const TreeProduct& trade) const {
@@ -60,13 +69,9 @@ double BinomialTreePricer::getSpot(int ti, int si) const {
     return currentSpot * std::pow(u, si) * std::pow(d, ti - si);
 }
 
-double BinomialTreePricer::getProbUp() const {
-    return p;
-}
+double BinomialTreePricer::getProbUp() const { return p; }
 
-double BinomialTreePricer::getProbDown() const {
-    return 1.0 - p;
-}
+double BinomialTreePricer::getProbDown() const { return 1.0 - p; }
 
 // ===========================
 // CRR Tree

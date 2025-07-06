@@ -1,36 +1,44 @@
+#include "black_scholes_pricer.h"
+#include "european_trade.h"
 #include <cmath>
 #include <stdexcept>
-#include <iostream>
 
-#include "black_scholes_pricer.h"
+inline double norm_cdf(double x) {
+    return 0.5 * std::erfc(-x / std::sqrt(2.0));
+}
 
-// ===========================
-// Black-Scholes Pricing Logic
-// ===========================
 double BlackScholesPricer::price(const Market& mkt, std::shared_ptr<Trade> trade) const {
-    // Downcast to EuropeanOption
-    const auto* opt = dynamic_cast<const EuropeanOption*>(trade.get());
+    // Cast to EuropeanOption only
+    auto opt = std::dynamic_pointer_cast<EuropeanOption>(trade);
     if (!opt)
-        throw std::runtime_error("BlackScholesPricer only supports EuropeanOption.");
+        throw std::runtime_error("Black-Scholes pricer only supports EuropeanOption");
 
+    // Fetch input data
     double S = mkt.getStockPrice(opt->getUnderlying());
     double K = opt->getStrike();
-    double T = (opt->getExpiry() - mkt.asOf) / 365.0;  // Use market date for consistency
-    double r = mkt.getCurve("USD-SOFR")->getRate(opt->getExpiry());
-    double vol = mkt.getVolCurve("LOGVOL")->getVol(opt->getExpiry());
+    double T = (opt->getExpiry() - mkt.asOf) / 365.0;
+    double sigma = mkt.getVolCurve("LOGVOL")->getVol(opt->getVolTenor());
+    double r = mkt.getCurve(opt->getRateCurve())->getRate(opt->getExpiry());
 
-    if (T <= 0 || vol <= 0 || S <= 0 || K <= 0)
-        throw std::runtime_error("Invalid inputs for Black-Scholes.");
+    // Handle edge case (e.g. expired)
+    if (T <= 0.0 || sigma <= 0.0)
+        return opt->payoff(S);
 
-    double d1 = (std::log(S / K) + (r + 0.5 * vol * vol) * T) / (vol * std::sqrt(T));
-    double d2 = d1 - vol * std::sqrt(T);
+    // Compute Black-Scholes formula
+    double sqrtT = std::sqrt(T);
+    double d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+    double d2 = d1 - sigma * sqrtT;
+    double df = std::exp(-r * T);
 
-    double pv = 0.0;
+    double bsPrice;
     if (opt->getOptionType() == OptionType::Call)
-        pv = S * norm_cdf(d1) - K * std::exp(-r * T) * norm_cdf(d2);
+        bsPrice = S * norm_cdf(d1) - K * df * norm_cdf(d2);
     else
-        pv = K * std::exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1);
+        bsPrice = K * df * norm_cdf(-d2) - S * norm_cdf(-d1);
 
-    // Notional and long/short adjustment
-    return opt->isLong() ? pv * opt->getNotional() : -pv * opt->getNotional();
+    // Apply sign and notional
+    double sign = opt->isLong() ? 1.0 : -1.0;
+    double result = sign * opt->getNotional() * bsPrice;
+
+    return result;
 }

@@ -1,4 +1,5 @@
 #pragma once
+
 #include "trade.h"
 #include "types.h"
 #include "date.h"
@@ -29,7 +30,9 @@ public:
     double price(const Market& mkt) const override;
     double pv(const Market& mkt) const override;
 
-    // Additional accessors
+    // Recursion-safe variant
+    double pv(const Market& mkt, bool useTree) const;
+
     const Date& getExpiry() const override;
     const Date& getTradeDate() const override;
     const std::string& getRateCurve() const override;
@@ -74,6 +77,9 @@ public:
     double valueAtNode(double S, double t, double continuationValue) const override;
     double price(const Market& mkt) const override;
     double pv(const Market& mkt) const override;
+
+    // Add this line:
+    double pv(const Market& mkt, bool useTree) const;
 
     const Date& getExpiry() const override;
     const Date& getTradeDate() const override;

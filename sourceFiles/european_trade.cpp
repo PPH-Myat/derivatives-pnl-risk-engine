@@ -79,8 +79,15 @@ double EuropeanOption::price(const Market& mkt) const {
 }
 
 double EuropeanOption::pv(const Market& mkt) const {
-    CRRBinomialTreePricer pricer(50);
-    return pricer.price(mkt, std::make_shared<EuropeanOption>(*this));
+    return pv(mkt, true);
+}
+
+double EuropeanOption::pv(const Market& mkt, bool useTree) const {
+    if (useTree) {
+        CRRBinomialTreePricer pricer(50);
+        return pricer.price(mkt, std::const_pointer_cast<Trade>(shared_from_this()));
+    }
+    return payoff(mkt);  // fallback (can replace with Black-Scholes)
 }
 
 const Date& EuropeanOption::getExpiry() const { return expiryDate; }
@@ -127,7 +134,7 @@ double EuroCallSpread::payoff(const Market& market) const {
     return payoff(S);
 }
 
-double EuroCallSpread::valueAtNode(double S, double /*t*/, double continuation) const {
+double EuroCallSpread::valueAtNode(double, double, double continuation) const {
     return continuation;
 }
 
@@ -136,8 +143,15 @@ double EuroCallSpread::price(const Market& mkt) const {
 }
 
 double EuroCallSpread::pv(const Market& mkt) const {
-    CRRBinomialTreePricer pricer(50);
-    return pricer.price(mkt, std::make_shared<EuroCallSpread>(*this));
+    return pv(mkt, true);
+}
+
+double EuroCallSpread::pv(const Market& mkt, bool useTree) const {
+    if (useTree) {
+        CRRBinomialTreePricer pricer(50);
+        return pricer.price(mkt, std::const_pointer_cast<Trade>(shared_from_this()));
+    }
+    return payoff(mkt);
 }
 
 const Date& EuroCallSpread::getExpiry() const { return expiryDate; }

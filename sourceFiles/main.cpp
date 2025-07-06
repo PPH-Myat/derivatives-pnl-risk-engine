@@ -1,3 +1,4 @@
+// main.cpp
 #include <fstream>
 #include <chrono>
 #include <ctime>
@@ -74,15 +75,11 @@ void loadTrade(vector<shared_ptr<Trade>>& portfolio) {
                 portfolio.push_back(trade);
                 cout << "[OK] Loaded trade " << i + 1 << ": " << trade->getType() << " " << underlying << endl;
             }
-            else {
-                cerr << "[ERROR] Unknown trade type: " << type << endl;
-            }
         }
-        catch (const std::exception& e) {
-            cerr << "[ERROR] Failed to parse trade line: " << lines[i] << " => " << e.what() << endl;
+        catch (const exception& e) {
+            cerr << "[ERROR] Parsing failed: " << lines[i] << " => " << e.what() << endl;
         }
     }
-    cout << "[INFO] Loaded " << portfolio.size() << " trades.\n" << endl;
 }
 
 // ========== Load Curves ==========
@@ -93,23 +90,12 @@ void loadIrCurve(Market& mkt, const string& fileName, const string& curveName) {
     readFromFile(basePath + fileName, header, lines);
     Date asOf = mkt.asOf;
 
-    if (lines.empty()) {
-        cerr << "[ERROR] Curve file is empty: " << fileName << endl;
-        return;
-    }
-
     for (const auto& line : lines) {
         auto parts = split(line, ":");
         if (parts.size() < 2) continue;
-        try {
-            Date tenorDate = dateAddTenor(asOf, parts[0]);
-            double rate = stod(parts[1].substr(0, parts[1].find('%'))) / 100.0;
-            curve->addRate(tenorDate, rate);
-            cout << "[INFO] Loaded tenor " << parts[0] << " (" << tenorDate << ") = " << rate << " from " << fileName << endl;
-        }
-        catch (const std::exception& e) {
-            cerr << "[ERROR] Bad line in " << fileName << ": " << line << " => " << e.what() << endl;
-        }
+        Date tenorDate = dateAddTenor(asOf, parts[0]);
+        double rate = stod(parts[1]) / 100.0;
+        curve->addRate(tenorDate, rate);
     }
 
     mkt.addCurve(curveName, curve);
@@ -125,14 +111,9 @@ void loadVolCurve(Market& mkt, const string& fileName, const string& curveName) 
     for (const auto& line : lines) {
         auto parts = split(line, ":");
         if (parts.size() < 2) continue;
-        try {
-            Date tenorDate = dateAddTenor(asOf, parts[0]);
-            double v = stod(parts[1].substr(0, parts[1].find('%'))) / 100.0;
-            vol->addVol(tenorDate, v);
-        }
-        catch (...) {
-            cerr << "[ERROR] Bad vol line: " << line << endl;
-        }
+        Date tenorDate = dateAddTenor(asOf, parts[0]);
+        double v = stod(parts[1]) / 100.0;
+        vol->addVol(tenorDate, v);
     }
 
     mkt.addVolCurve(curveName, vol);
@@ -142,71 +123,76 @@ void loadVolCurve(Market& mkt, const string& fileName, const string& curveName) 
 void outPutResult(const vector<TradeResult>& results) {
     vector<string> output;
     for (const auto& r : results) {
-        string row = to_string(r.id) + "; " + r.tradeInfo +
+        output.push_back(to_string(r.id) + "; " + r.tradeInfo +
             "; PV:" + to_string(r.PV) +
             "; Delta:" + to_string(r.DV01) +
-            "; Vega:" + to_string(r.Vega);
-        output.push_back(row);
+            "; Vega:" + to_string(r.Vega));
     }
     outputToFile("output.txt", output);
 }
 
+void readAndPrintOutput(const string& filePath) {
+    ifstream in(filePath);
+    if (!in.is_open()) {
+        cerr << "[ERROR] Cannot open output file.\n";
+        return;
+    }
+
+    cout << "\n============ Output File: " << filePath << " ============\n";
+    string line;
+    while (getline(in, line)) {
+        cout << line << endl;
+    }
+    cout << "==========================================================\n" << endl;
+}
+
 // ========== Main ==========
 int main() {
-    // 1. Date Setup
     time_t t = chrono::system_clock::to_time_t(chrono::system_clock::now());
     tm localTime;
     localtime_s(&localTime, &t);
     Date valueDate(localTime.tm_year + 1900, localTime.tm_mon + 1, localTime.tm_mday);
-    cout << "[INFO] Valuation Date: " << valueDate << "\n" << endl;
 
-    // 2. Market Setup
     auto mkt = make_shared<Market>(valueDate);
     loadIrCurve(*mkt, "usd_curve.txt", "USD-SOFR");
     loadIrCurve(*mkt, "sgd_curve.txt", "SGD-SORA");
-
-    // Add aliases
     mkt->addCurve("USD-GOV", mkt->getCurve("USD-SOFR"));
     mkt->addCurve("SGD-GOV", mkt->getCurve("SGD-SORA"));
-
     loadVolCurve(*mkt, "vol.txt", "LOGVOL");
 
     mkt->addStockPrice("APPL", 652.0);
     mkt->addStockPrice("SP500", 5035.7);
-    mkt->addStockPrice("STI", 3420);
+    mkt->addStockPrice("STI", 3420.0);
 
-    // 3. Load Portfolio
     vector<shared_ptr<Trade>> portfolio;
     loadTrade(portfolio);
 
-    // 4. Pricing & Risk
     auto pricer = make_shared<CRRBinomialTreePricer>(50);
     vector<TradeResult> results;
 
-    double curve_shock = 0.0001, vol_shock = 0.01, price_shock = 0.0;
+    double curve_shock = 0.0001, vol_shock = 0.01;
 
     for (size_t i = 0; i < portfolio.size(); ++i) {
         auto& trade = portfolio[i];
-        cout << "[INFO] Pricing Trade #" << (i + 1) << "..." << endl;
-
         TradeResult r;
         r.id = i + 1;
         r.tradeInfo = trade->getType() + " " + trade->getUnderlying();
-
         r.PV = pricer->price(*mkt, trade);
 
-        RiskEngine engine(*mkt, curve_shock, vol_shock, price_shock);
+        RiskEngine engine(*mkt, curve_shock, vol_shock, 0.0);
         engine.computeRisk("dv01", trade, true);
-        for (const auto& [_, v] : engine.getResult()) r.DV01 += v;
+        for (const auto& [_, v] : engine.getResult())
+            r.DV01 += v / (2.0 * curve_shock);
 
         engine.computeRisk("vega", trade, true);
-        for (const auto& [_, v] : engine.getResult()) r.Vega += v;
+        for (const auto& [_, v] : engine.getResult())
+            r.Vega += v / vol_shock;
 
         results.push_back(r);
     }
 
-    // 5. Output
     outPutResult(results);
-    cout << "Pricing and risk completed. Results written to output.txt" << endl;
+    cout << "Pricing and risk completed. Results written to output.txt\n";
+    readAndPrintOutput("output.txt");
     return 0;
 }
