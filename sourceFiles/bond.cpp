@@ -51,7 +51,8 @@ void Bond::generateSchedule()
 }
 
 double Bond::payoff(double marketPrice) const {
-    return isLong ? notional * (marketPrice - 100.0) : notional * (100.0 - marketPrice);
+    return isLong_ ? notional * (marketPrice - 100.0)
+        : notional * (100.0 - marketPrice);
 }
 
 double Bond::payoff(const Market& mkt) const {
@@ -81,7 +82,7 @@ double Bond::pv(const Market& mkt) const {
     double dfFinal = rc->getDf(maturityDate);
     pv += notional * dfFinal;
 
-    return isLong ? pv : -pv;
+    return isLong_ ? pv : -pv;
 }
 
 double Bond::price(const Market& mkt) const {
@@ -99,6 +100,10 @@ const Date& Bond::getTradeDate() const { return tradeDate; }
 const Date& Bond::getExpiry() const { return maturityDate; }
 double Bond::getNotional() const { return notional; }
 double Bond::getStrike() const { return couponRate; }
+
+bool Bond::isLong() const {
+    return isLong_;
+}
 
 std::shared_ptr<Trade> Bond::clone() const {
     return std::make_shared<Bond>(*this);

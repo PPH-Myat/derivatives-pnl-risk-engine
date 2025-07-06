@@ -9,105 +9,56 @@
 #include "trade.h"
 #include "market.h"
 
-using namespace std;
-
 struct MarketShock {
-    string market_id;
-    pair<Date, double> shock; //tenor and value
+    std::string market_id;
+    std::pair<Date, double> shock;
 };
 
-class CurveDecorator : public Market {
+class CurveDecorator {
 public:
-    CurveDecorator(const Market& mkt, const MarketShock& curveShock)
-        : thisMarketUp(mkt), thisMarketDown(mkt)
-    {
-        std::cout << "[CurveDecorator] created" << std::endl;
-        auto curve_up = thisMarketUp.getCurve(curveShock.market_id);
-        curve_up->shock(curveShock.shock.first, curveShock.shock.second);
-        std::cout << "[CurveDecorator] tenor " << curveShock.shock.first
-            << " shocked up by " << curveShock.shock.second << std::endl;
+    CurveDecorator(const Market& mkt, const MarketShock& curveShock);
 
-        auto curve_down = thisMarketDown.getCurve(curveShock.market_id);
-        curve_down->shock(curveShock.shock.first, -curveShock.shock.second);
-        std::cout << "[CurveDecorator] tenor " << curveShock.shock.first
-            << " shocked down by " << -curveShock.shock.second << std::endl;
-    }
-
-    inline const Market getMarketUp() const { return thisMarketUp; }
-    inline const Market getMarketDown() const { return thisMarketDown; }
+    const Market& getMarketUp() const;
+    const Market& getMarketDown() const;
 
 private:
     Market thisMarketUp;
     Market thisMarketDown;
 };
 
-class VolDecorator : public Market {
+class VolDecorator {
 public:
-    VolDecorator(const Market& mkt, const MarketShock& volShock)
-        : originMarket(mkt), thisMarket(mkt)
-    {
-        std::cout << "[VolDecorator] created" << std::endl;
-        auto volcurve = thisMarket.getVolCurve(volShock.market_id);
-        volcurve->shock(volShock.shock.first, volShock.shock.second);
-        std::cout << "[VolDecorator] tenor " << volShock.shock.first
-            << " shocked by " << volShock.shock.second << std::endl;
-    }
+    VolDecorator(const Market& mkt, const MarketShock& volShock);
 
-    inline const Market& getOriginMarket() const { return originMarket; }
-    inline const Market& getMarket() const { return thisMarket; }
+    const Market& getOriginMarket() const;
+    const Market& getMarket() const;
 
 private:
     Market originMarket;
     Market thisMarket;
 };
 
-class PriceDecorator : public Market {
+class PriceDecorator {
 public:
-    PriceDecorator(const Market& mkt, const MarketShock& priceShock) : thisMarket(mkt)
-    {
-        cout << "stock price decorator is created" << endl;
-        thisMarket.shockPrice(priceShock.market_id, priceShock.shock.second);
-    }
+    PriceDecorator(const Market& mkt, const MarketShock& priceShock);
 
-    inline const Market& getMarket() const { return thisMarket; }
+    const Market& getMarket() const;
 
 private:
     Market thisMarket;
 };
 
-class RiskEngine
-{
+class RiskEngine {
 public:
+    RiskEngine(const Market& market, double curve_shock, double vol_shock, double price_shock);
 
-    RiskEngine(const Market& market, double curve_shock, double vol_shock, double price_shock)
-    {
-        // Curve shocks
-        MarketShock usdShock{ "USD-SOFR", {Date(), curve_shock} };
-        MarketShock sgdShock{ "SGD-SORA", {Date(), curve_shock} };
-
-        curveShocks.emplace("USD-SOFR", CurveDecorator(market, usdShock));
-        curveShocks.emplace("SGD-SORA", CurveDecorator(market, sgdShock));
-
-        // Volatility shock
-        MarketShock volShock{ "LOGVOL", {Date(), vol_shock} };
-        volShocks.emplace("LOGVOL", VolDecorator(market, volShock));
-
-        std::cout << "[RiskEngine] created with shocks" << std::endl;
-    }
-
-
-    void computeRisk(string riskType, std::shared_ptr<Trade> trade, bool singleThread);
-
-    inline map<string, double> getResult() const {
-        cout << " risk result: " << endl;
-        return result;
-    };
+    void computeRisk(std::string riskType, std::shared_ptr<Trade> trade, bool singleThread);
+    std::map<std::string, double> getResult() const;
 
 private:
-    unordered_map<string, CurveDecorator> curveShocks; //tenor, shock
-    unordered_map<string, VolDecorator> volShocks;
-    unordered_map<string, PriceDecorator> priceShocks;
+    std::unordered_map<std::string, CurveDecorator> curveShocks;
+    std::unordered_map<std::string, VolDecorator> volShocks;
+    std::unordered_map<std::string, PriceDecorator> priceShocks;
 
-    map<string, double> result;
-
+    std::map<std::string, double> result;
 };

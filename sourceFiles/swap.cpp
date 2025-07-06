@@ -93,7 +93,7 @@ double Swap::pv(const Market& mkt) const
         if (dt < valueDate) continue;
 
         double tau = (swapSchedule[i] - swapSchedule[i - 1]) / 360.0; // ACT/360
-        df = rc->getDf(dt)
+        df = rc->getDf(dt);
         fixPv += notional * tau * tradeRate * df;
     }
 
@@ -124,6 +124,10 @@ const Date& Swap::getExpiry() const { return maturityDate; }
 double Swap::getNotional() const { return notional; }
 const std::string& Swap::getRateCurve() const { return rateCurve; }
 double Swap::getStrike() const { return tradeRate; }
+
+bool Swap::isLong() const {
+    return isLong_;
+}
 
 std::shared_ptr<Trade> Swap::clone() const {
     return std::make_shared<Swap>(*this);

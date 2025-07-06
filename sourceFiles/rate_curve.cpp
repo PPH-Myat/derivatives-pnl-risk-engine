@@ -81,6 +81,17 @@ void RateCurve::shock(double delta) {
     for (auto& r : rates) r += delta;
 }
 
+// ===== Shock a specific tenor date =====
+void RateCurve::shock(const Date& tenor, double delta) {
+    for (size_t i = 0; i < tenorDates.size(); ++i) {
+        if (tenorDates[i] == tenor) {
+            rates[i] += delta;
+            return;
+        }
+    }
+    std::cerr << "[WARN] Tenor date " << tenor << " not found in rate curve for shock." << std::endl;
+}
+
 // ===== Load curve data from a file =====
 void RateCurve::loadFromFile(const std::string& filename, const Date& asOf) {
     ifstream file(filename);

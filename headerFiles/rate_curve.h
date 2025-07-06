@@ -15,7 +15,8 @@ public:
 
     // Add a (tenor date, rate) point to the curve
     void addRate(const Date& tenor, double rate);
-    void shock(double delta);                // parallel shock all rates
+    void shock(double delta);                         // parallel shock
+    void shock(const Date& tenor, double delta);      // point shock
 
 	// Retrieve the rate corresponding to a given tenor date (with interpolation)
     double getRate(const Date& tenor) const;
