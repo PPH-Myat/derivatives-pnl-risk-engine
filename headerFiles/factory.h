@@ -1,0 +1,96 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <stdexcept>
+
+#include "swap.h"
+#include "bond.h"
+#include "european_trade.h"
+#include "american_trade.h"
+#include "types.h"
+
+// ==========================================
+// Abstract Base Class for All Trade Factories
+// ==========================================
+class TradeFactory {
+public:
+    virtual std::shared_ptr<Trade> createTrade(const std::string& underlying,
+        const Date& start,
+        const Date& end,
+        double notional,
+        double strike,
+        double freq,
+        OptionType opt) const = 0;
+
+    virtual ~TradeFactory() = default;
+};
+
+// ==========================================
+// Swap Factory
+// ==========================================
+class SwapFactory : public TradeFactory {
+public:
+    std::shared_ptr<Trade> createTrade(const std::string& underlying,
+        const Date& start,
+        const Date& end,
+        double notional,
+        double rate,
+        double freq,
+        OptionType /*opt*/) const override {
+        if (freq <= 0 || freq > 1)
+            throw std::invalid_argument("Invalid swap frequency.");
+        return std::make_shared<Swap>(underlying, start, end, notional, rate, freq);
+    }
+};
+
+// ==========================================
+// Bond Factory
+// ==========================================
+class BondFactory : public TradeFactory {
+public:
+    std::shared_ptr<Trade> createTrade(const std::string& underlying,
+        const Date& start,
+        const Date& end,
+        double notional,
+        double price,
+        double freq,
+        OptionType /*opt*/) const override {
+        int intFreq = static_cast<int>(1.0 / freq);
+        if (intFreq <= 0)
+            throw std::invalid_argument("Invalid bond frequency.");
+        return std::make_shared<Bond>(underlying, start, end, notional, intFreq, price, 0.04); // default 4% coupon
+    }
+};
+
+// ==========================================
+// European Option Factory
+// ==========================================
+class EurOptFactory : public TradeFactory {
+public:
+    std::shared_ptr<Trade> createTrade(const std::string& underlying,
+        const Date& start,
+        const Date& end,
+        double notional,
+        double strike,
+        double /*freq*/,
+        OptionType opt) const override {
+        return std::make_shared<EuropeanOption>(opt, notional, strike, start, end, underlying);
+    }
+};
+
+// ==========================================
+// American Option Factory
+// ==========================================
+class AmericanOptFactory : public TradeFactory {
+public:
+    std::shared_ptr<Trade> createTrade(const std::string& underlying,
+        const Date& start,
+        const Date& end,
+        double notional,
+        double strike,
+        double /*freq*/,
+        OptionType opt) const override {
+        return std::make_shared<AmericanOption>(opt, notional, strike, start, end, underlying);
+    }
+};

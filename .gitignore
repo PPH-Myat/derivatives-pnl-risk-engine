@@ -1,0 +1,106 @@
+# ====================================
+# C++ Build Artifacts
+# ====================================
+*.o
+*.obj
+*.lo
+*.slo
+*.gch
+*.pch
+*.out
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.app
+*.run
+*.mod
+*.smod
+*.d
+
+# ====================================
+# CMake
+# ====================================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+build/
+cmake-build-*/
+out/
+out/*/
+*.ninja
+*.obj
+*.exe
+*.pdb
+*.log
+*.yaml
+*.json
+*.dir/
+
+# ====================================
+# Visual Studio
+# ====================================
+.vs/
+*.vcxproj.user
+*.vcxproj.filters
+*.sln.docstates
+*.suo
+*.user
+*.ipch
+*.opensdf
+*.VC.db
+*.VC.opendb
+
+# ====================================
+# JetBrains CLion
+# ====================================
+.idea/
+*.iml
+
+# ====================================
+# VS Code
+# ====================================
+.vscode/
+*.code-workspace
+
+# ====================================
+# OS & Misc
+# ====================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.swp
+*.tmp
+*.bak
+*.old
+*~
+
+# ====================================
+# Logs, Dumps, Reports
+# ====================================
+*.log
+*.trace
+*.runlog
+*.mem
+*.core
+
+# ====================================
+# Archive and Data
+# ====================================
+*.zip
+*.tgz
+*.tar.gz
+*.7z
+*.csv
+*.dat
+*.pdf
+
+# ====================================
+# Project-specific
+# ====================================
+result.txt
+trade_output/
