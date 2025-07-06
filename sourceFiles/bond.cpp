@@ -1,3 +1,4 @@
+#include "Types.h"
 #include "bond.h"
 #include "market.h"
 #include "helper.h"
@@ -107,4 +108,8 @@ bool Bond::isLong() const {
 
 std::shared_ptr<Trade> Bond::clone() const {
     return std::make_shared<Bond>(*this);
+}
+
+OptionType Bond::getOptionType() const {
+    return OptionType::None;
 }

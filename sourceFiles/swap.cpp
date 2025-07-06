@@ -1,3 +1,4 @@
+#include "trade.h"
 #include "swap.h"
 #include "market.h"
 #include "helper.h"
@@ -131,4 +132,8 @@ bool Swap::isLong() const {
 
 std::shared_ptr<Trade> Swap::clone() const {
     return std::make_shared<Swap>(*this);
+}
+
+OptionType Swap::getOptionType() const {
+    return OptionType::None;
 }

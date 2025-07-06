@@ -31,6 +31,7 @@ public:
     const Date& getExpiry() const override;
     double getNotional() const override;
     double getStrike() const override;
+    OptionType getOptionType() const override;
     bool isLong() const override;
 
     // === Factory/Risk Copy Support ===
