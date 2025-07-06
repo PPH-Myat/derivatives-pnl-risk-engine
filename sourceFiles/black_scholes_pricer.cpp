@@ -7,29 +7,30 @@
 // ===========================
 // Black-Scholes Pricing Logic
 // ===========================
-double BlackScholesPricer::price(const Market& mkt, Trade* trade) {
-    // Downcast to EuropeanOption (safe cast check)
-    const EuropeanOption* opt = dynamic_cast<const EuropeanOption*>(trade);
+double BlackScholesPricer::price(const Market& mkt, std::shared_ptr<Trade> trade) const {
+    // Downcast to EuropeanOption
+    const auto* opt = dynamic_cast<const EuropeanOption*>(trade.get());
     if (!opt)
         throw std::runtime_error("BlackScholesPricer only supports EuropeanOption.");
 
     double S = mkt.getStockPrice(opt->getUnderlying());
     double K = opt->getStrike();
-    double T = (opt->getExpiry() - opt->getTradeDate());
-    double r = mkt.getCurve("USD-SOFR").getRate(opt->getExpiry());
-    double vol = mkt.getVolCurve("VOL").getVol(opt->getExpiry());
+    double T = (opt->getExpiry() - mkt.asOf) / 365.0;  // Use market date for consistency
+    double r = mkt.getCurve("USD-SOFR")->getRate(opt->getExpiry());
+    double vol = mkt.getVolCurve("LOGVOL")->getVol(opt->getExpiry());
 
-    if (T <= 0 || vol <= 0 || S <= 0 || K <= 0) {
+    if (T <= 0 || vol <= 0 || S <= 0 || K <= 0)
         throw std::runtime_error("Invalid inputs for Black-Scholes.");
-    }
 
-    double d1 = (log(S / K) + (r + 0.5 * vol * vol) * T) / (vol * sqrt(T));
-    double d2 = d1 - vol * sqrt(T);
+    double d1 = (std::log(S / K) + (r + 0.5 * vol * vol) * T) / (vol * std::sqrt(T));
+    double d2 = d1 - vol * std::sqrt(T);
 
-    if (opt->getOptionType() == OptionType::Call) {
-        return S * norm_cdf(d1) - K * exp(-r * T) * norm_cdf(d2);
-    }
-    else {
-        return K * exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1);
-    }
+    double pv = 0.0;
+    if (opt->getOptionType() == OptionType::Call)
+        pv = S * norm_cdf(d1) - K * std::exp(-r * T) * norm_cdf(d2);
+    else
+        pv = K * std::exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1);
+
+    // Notional and long/short adjustment
+    return opt->isLong() ? pv * opt->getNotional() : -pv * opt->getNotional();
 }

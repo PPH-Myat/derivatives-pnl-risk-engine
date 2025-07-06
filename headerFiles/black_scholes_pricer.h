@@ -1,10 +1,14 @@
 #pragma once
 
-#include "tree_pricer.h"
+#include <memory>
+#include <cmath>
+#include "pricer.h"
 #include "market.h"
 #include "european_trade.h"
 
-// Utility: cumulative normal distribution function
+// ===========================
+// Utility: Cumulative Normal CDF
+// ===========================
 inline double norm_cdf(double x) {
     return 0.5 * std::erfc(-x / std::sqrt(2.0));
 }
@@ -14,6 +18,5 @@ inline double norm_cdf(double x) {
 // ===========================
 class BlackScholesPricer : public Pricer {
 public:
-    // Override base class pricing interface
-    double price(const Market& mkt, Trade* trade) override;
+    double price(const Market& mkt, std::shared_ptr<Trade> trade) const override;
 };

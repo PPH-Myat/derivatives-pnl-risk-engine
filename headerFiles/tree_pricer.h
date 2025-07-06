@@ -1,15 +1,17 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+#include <cmath>
 #include "pricer.h"
 #include "tree_product.h"
 
 class BinomialTreePricer : public Pricer {
 protected:
     int nTimeSteps;
-    double u, d, p, currentSpot;
-    std::vector<double> states;
+    mutable double u, d, p, currentSpot;
 
-    virtual void modelSetup(double S0, double sigma, double rate, double dt) = 0;
+    virtual void modelSetup(double S0, double sigma, double rate, double dt) const = 0;
 
     double getSpot(int ti, int si) const;
     double getProbUp() const;
@@ -18,21 +20,20 @@ protected:
 public:
     explicit BinomialTreePricer(int N);
 
-    // Pricing
     double price(const Market& mkt, std::shared_ptr<Trade> trade) const override;
     double priceTree(const Market& mkt, const TreeProduct& trade) const;
 };
 
-// CRR Tree
+// CRR Tree Pricer
 class CRRBinomialTreePricer : public BinomialTreePricer {
 public:
     explicit CRRBinomialTreePricer(int N);
-    void modelSetup(double S0, double sigma, double rate, double dt) override;
+    void modelSetup(double S0, double sigma, double rate, double dt) const override;
 };
 
-// Jarrow-Rudd Tree
+// Jarrow-Rudd Tree Pricer
 class JRRNBinomialTreePricer : public BinomialTreePricer {
 public:
     explicit JRRNBinomialTreePricer(int N);
-    void modelSetup(double S0, double sigma, double rate, double dt) override;
+    void modelSetup(double S0, double sigma, double rate, double dt) const override;
 };
