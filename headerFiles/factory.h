@@ -9,6 +9,7 @@
 #include "european_trade.h"
 #include "american_trade.h"
 #include "types.h"
+#include "helper.h"
 
 // ==========================================
 // Abstract Base Class for All Trade Factories
@@ -56,9 +57,12 @@ public:
         double rate,
         double freq,
         OptionType /*opt*/) const override {
-        if (freq <= 0 || freq > 1)
-            throw std::invalid_argument("Invalid bond frequency.");
-        return std::make_shared<Bond>(underlying, start, end, notional, rate, freq);
+
+        std::string mappedCurve = util::to_upper(underlying);
+        if (mappedCurve == "USD-GOV") mappedCurve = "USD-SOFR";
+        if (mappedCurve == "SGD-GOV") mappedCurve = "SGD-SORA";
+
+        return std::make_shared<Bond>(mappedCurve, start, end, notional, rate, freq);
     }
 };
 

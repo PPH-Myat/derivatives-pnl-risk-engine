@@ -1,318 +1,212 @@
 #include <fstream>
-#include <sstream>
-#include <string>
-#include <ctime>
 #include <chrono>
-#include <vector>
+#include <ctime>
 #include <iostream>
-#include <stdexcept>
-#include <iomanip>
+#include <memory>
+#include <unordered_map>
+#include <vector>
 
-#include "date.h"
 #include "market.h"
 #include "tree_pricer.h"
-#include "european_trade.h"
-#include "bond.h"
-#include "swap.h"
-#include "american_trade.h"
-#include "black_scholes_pricer.h"
+#include "risk_engine.h"
+#include "factory.h"
+#include "helper.h"
 
 using namespace std;
+using namespace util;
 
-// ===== Helper: Parse YYYY-MM-DD string to Date =====
-Date parseDate(const string& s) {
-    int y, m, d;
-    if (sscanf(s.c_str(), "%d-%d-%d", &y, &m, &d) != 3) {
-        throw invalid_argument("Invalid date format: " + s);
-    }
-    return Date(y, m, d);
-}
+const string basePath = "../../../resourceFiles/";
 
-// ===== Task 2: Read trades from file and build Trade portfolio =====
-void createPortfolioFromFile(const string& filename, vector<Trade*>& portfolio) {
-    ifstream file(filename);
-    if (!file.is_open()) {
-        cerr << "[ERROR] Cannot open file: " << filename << endl;
-        return;
-    }
+struct TradeResult {
+    size_t id = 0;
+    string tradeInfo;
+    double PV = 0.0;
+    double DV01 = 0.0;
+    double Vega = 0.0;
+};
 
-    string line;
-    getline(file, line); // skip header
+// ========== Load Trades ==========
+void loadTrade(vector<shared_ptr<Trade>>& portfolio) {
+    string header;
+    vector<string> lines;
+    readFromFile(basePath + "trade.txt", header, lines);
 
-    while (getline(file, line)) {
-        istringstream ss(line);
-        string field;
-        vector<string> fields;
-        while (getline(ss, field, ';')) {
-            fields.push_back(field);
-        }
-
-        if (fields.size() < 11) {
-            cerr << "[WARN] Skipping malformed line: " << line << endl;
+    cout << "[INFO] Loading trades..." << endl;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        auto t = split(lines[i], ";");
+        if (t.size() < 12) {
+            cerr << "[WARN] Skipping malformed line: " << lines[i] << endl;
             continue;
         }
 
         try {
-            string type = fields[1];
-            Date tradeDate = parseDate(fields[2]);
-            Date startDate = parseDate(fields[3]);
-            Date endDate = parseDate(fields[4]);
-            double notional = stod(fields[5]);
-            string instrument = fields[6];
-            double rate = stod(fields[7]);
-            double strike = stod(fields[8]);
-            double freqFraction = stod(fields[9]);
-            string optType = fields[10];
+            string type = to_lower(t[1]);
+            Date tradeDate = parseDate(t[2]);
+            Date startDate = parseDate(t[3]);
+            Date endDate = parseDate(t[4]);
+            double notional = stod(t[5]);
+            string underlying = t[6];
+            if (underlying == "SGD-MAS-BILL") underlying = "SGD-SORA";
+            double rate = stod(t[7]);
+            double strike = stod(t[8]);
+            double freq = stod(t[9]);
+            string optionStr = to_lower(t[10]);
+            string direction = to_lower(t[11]);
 
-            if (freqFraction <= 0.0) throw runtime_error("Invalid frequency fraction");
-            int freq = static_cast<int>(round(1.0 / freqFraction));
-            transform(instrument.begin(), instrument.end(), instrument.begin(), ::toupper);
+            OptionType optType = OptionType::None;
+            if (optionStr == "call") optType = OptionType::Call;
+            else if (optionStr == "put") optType = OptionType::Put;
 
-            if (type == "swap") {
-                portfolio.push_back(new Swap(tradeDate, startDate, endDate, notional, rate, freq));
+            bool isLong = (direction == "long");
+
+            shared_ptr<Trade> trade;
+            if (type == "bond")
+                trade = BondFactory().createTrade(underlying, startDate, endDate, notional, rate, freq, optType);
+            else if (type == "swap")
+                trade = SwapFactory().createTrade(underlying, startDate, endDate, notional, rate, freq, optType);
+            else if (type == "european")
+                trade = make_shared<EuropeanOption>(optType, notional, strike, tradeDate, endDate, underlying);
+            else if (type == "american")
+                trade = make_shared<AmericanOption>(optType, notional, strike, tradeDate, endDate, underlying);
+
+            if (trade) {
+                trade->setLong(isLong);
+                portfolio.push_back(trade);
+                cout << "[OK] Loaded trade " << i + 1 << ": " << trade->getType() << " " << underlying << endl;
             }
-            else if (type == "bond") {
-                portfolio.push_back(new Bond(instrument, tradeDate, startDate, endDate,
-                    notional, freq, 100.0, rate));
-            }
-            else if (type == "european") {
-                OptionType ot = (optType == "call") ? OptionType::Call : OptionType::Put;
-                portfolio.push_back(new EuropeanOption(instrument, tradeDate, endDate, strike, ot));
-            }
-            else if (type == "american") {
-                OptionType ot = (optType == "call") ? OptionType::Call : OptionType::Put;
-                portfolio.push_back(new AmericanOption(instrument, tradeDate, endDate, strike, ot));
+            else {
+                cerr << "[ERROR] Unknown trade type: " << type << endl;
             }
         }
-        catch (const exception& e) {
-            cerr << "[ERROR] Trade line skipped: " << line << endl << "Reason: " << e.what() << endl;
+        catch (const std::exception& e) {
+            cerr << "[ERROR] Failed to parse trade line: " << lines[i] << " => " << e.what() << endl;
         }
     }
-
-    file.close();
+    cout << "[INFO] Loaded " << portfolio.size() << " trades.\n" << endl;
 }
 
-int main() {
-    // ===== Task 1: Set valuation date =====
-    Date valueDate;
-    time_t t = time(nullptr);
-    struct tm timeInfo;
-    if (localtime_s(&timeInfo, &t) == 0) {
-        valueDate.setYear(timeInfo.tm_year + 1900);
-        valueDate.setMonth(timeInfo.tm_mon + 1);
-        valueDate.setDay(timeInfo.tm_mday);
-    }
-    cout << "Valuation Date: " << valueDate << endl;
+// ========== Load Curves ==========
+void loadIrCurve(Market& mkt, const string& fileName, const string& curveName) {
+    auto curve = make_shared<RateCurve>(curveName);
+    string header;
+    vector<string> lines;
+    readFromFile(basePath + fileName, header, lines);
+    Date asOf = mkt.asOf;
 
-    // ===== Market object creation and copy test =====
-    Market mkt0;
-    Market mkt1(valueDate);
-    Market mkt2(mkt1);
-    Market mkt3;
-    mkt3 = mkt2;
-
-    // ===== Load market data from files =====
-    const string basePath = "../../../resourceFiles/";
-    mkt1.loadCurveFromFile(basePath + "curve.txt");
-    mkt1.loadVolFromFile(basePath + "vol.txt");
-    mkt1.loadStockPriceFromFile(basePath + "stockPrice.txt");
-    mkt1.loadBondPriceFromFile(basePath + "bondPrice.txt");
-
-    // ===== Task 2: Build portfolio =====
-    vector<Trade*> myPortfolio;
-
-    // Option A: Build portfolio from trade.txt file
-    //createPortfolioFromFile(basePath + "trade.txt", myPortfolio);
-    
-    // Option B: Manual portfolio creation
- 
-    // ===== [1] Bond =====
-    Date bondMaturity = valueDate.addYears(5);
-    double bondNotional = 100000.0;
-    int bondCouponFreq = 2;       // Semi-annual
-    double bondTradePrice = 101.5;
-    double bondCouponRate = 0.025; // 2.5%
-    string bondName = "SGD-GOV";
-
-    myPortfolio.push_back(new Bond(
-        bondName,
-        valueDate,        // tradeDate
-        valueDate,        // startDate
-        bondMaturity,
-        bondNotional,
-        bondCouponFreq,
-        bondTradePrice,
-        bondCouponRate
-    ));
-
-    // ===== [2] Swap =====
-    Date swapMaturity = valueDate.addYears(5);
-    double swapNotional = 1000000.0;
-    double fixedRate = 0.045;
-    int swapCouponFreq = 2;
-
-    myPortfolio.push_back(new Swap(
-        valueDate,        // tradeDate
-        valueDate,        // startDate
-        swapMaturity,
-        swapNotional,
-        fixedRate,
-        swapCouponFreq
-    ));
-
-    // ===== [3] European Option =====
-    string stockTicker = "AAPL";
-    double spotPrice = mkt1.getStockPrice(stockTicker);
-    Date optionExpiry = valueDate.addMonths(6);
-    double strikeCall = spotPrice * 0.95;
-
-    myPortfolio.push_back(new EuropeanOption(
-        stockTicker,
-        valueDate,        // tradeDate
-        optionExpiry,
-        strikeCall,
-        OptionType::Call
-    ));
-
-    // ===== [4] American Option =====
-    myPortfolio.push_back(new AmericanOption(
-        stockTicker,
-        valueDate,        // tradeDate
-        optionExpiry,
-        strikeCall,
-        OptionType::Call
-    ));
-
-    // ===== Task 3: price portfolio (using CRR binomial tree for options) =====
-    Pricer* treePricer = new CRRBinomialTreePricer(3);
-
-    ofstream log("pricing_result.txt");
-    if (!log.is_open()) {
-        cerr << "[ERROR] Cannot open pricing_result.txt for writing." << endl;
-        return 1;
+    if (lines.empty()) {
+        cerr << "[ERROR] Curve file is empty: " << fileName << endl;
+        return;
     }
 
-    cout << endl << "===== [Task 3] Portfolio Pricing Results =====" << endl;
-
-    // Formatted header
-    ostringstream header;
-    header << left << setw(15) << "Trade Type" << "| "
-        << left << setw(15) << "Underlying" << "| "
-        << right << setw(10) << "PV" << " | "
-        << right << setw(10) << "payoff(NPV)";
-    cout << header.str() << endl;
-
-    cout << string(60, '-') << endl;
-
-    for (auto* trade : myPortfolio) {
+    for (const auto& line : lines) {
+        auto parts = split(line, ":");
+        if (parts.size() < 2) continue;
         try {
-            double pv = treePricer->price(mkt1, trade);
-            double payoff = trade->payoff(mkt1);
-
-            string type = trade->getType();
-            string underlying = trade->getUnderlying();
-
-            // Clean string
-            underlying.erase(remove_if(underlying.begin(), underlying.end(),
-                [](char c) { return !isalnum(c) && c != '-' && c != '_'; }), underlying.end());
-
-            // Format row
-            ostringstream line;
-            line << left << setw(15) << type << "| "
-                << left << setw(15) << underlying << "| "
-                << right << setw(10) << fixed << setprecision(2) << pv << " | "
-                << right << setw(10) << fixed << setprecision(2) << payoff;
-
-            cout << line.str() << endl;
-
-            log << "Trade Type: " << type
-                << ", Underlying: " << underlying
-                << ", PV: " << pv
-                << ", payoff: " << payoff << endl;
+            Date tenorDate = dateAddTenor(asOf, parts[0]);
+            double rate = stod(parts[1].substr(0, parts[1].find('%'))) / 100.0;
+            curve->addRate(tenorDate, rate);
+            cout << "[INFO] Loaded tenor " << parts[0] << " (" << tenorDate << ") = " << rate << " from " << fileName << endl;
         }
-        catch (const exception& e) {
-            cerr << "[ERROR] Pricing failed for " << trade->getType()
-                << ": " << e.what() << endl;
+        catch (const std::exception& e) {
+            cerr << "[ERROR] Bad line in " << fileName << ": " << line << " => " << e.what() << endl;
         }
     }
 
-    cout << string(60, '-') << endl;
+    mkt.addCurve(curveName, curve);
+}
 
-    log.close();
+void loadVolCurve(Market& mkt, const string& fileName, const string& curveName) {
+    auto vol = make_shared<VolCurve>(curveName);
+    string header;
+    vector<string> lines;
+    readFromFile(basePath + fileName, header, lines);
+    Date asOf = mkt.asOf;
 
-    // ===== Task 4: Analyze pricing results =====
-    cout << "\n===== [Task 4] Analyzing Pricing Results =====" << endl;
-
-    EuropeanOption* euro = nullptr;
-    for (auto* trade : myPortfolio) {
-        if (trade->getType() == "EuropeanOption") {
-            euro = dynamic_cast<EuropeanOption*>(trade);
-            break;
+    for (const auto& line : lines) {
+        auto parts = split(line, ":");
+        if (parts.size() < 2) continue;
+        try {
+            Date tenorDate = dateAddTenor(asOf, parts[0]);
+            double v = stod(parts[1].substr(0, parts[1].find('%'))) / 100.0;
+            vol->addVol(tenorDate, v);
+        }
+        catch (...) {
+            cerr << "[ERROR] Bad vol line: " << line << endl;
         }
     }
 
-	// Comparison between Binomial Tree and Black-Scholes for European options
-    if (euro) {
-        BlackScholesPricer bsPricer;
-        double pvTree = treePricer->price(mkt1, euro);
-        double pvBS = bsPricer.price(mkt1, euro);
+    mkt.addVolCurve(curveName, vol);
+}
 
-        cout << "\n--- [Comparison A] Binomial Tree vs Black-Scholes ---" << endl;
-        cout << "European Option | Underlying: " << euro->getUnderlying()
-            << ", Strike: " << euro->getStrike()
-            << ", Expiry: " << euro->getExpiry() << endl;
-        cout << "  Binomial Tree PV = " << fixed << setprecision(4) << pvTree << endl;
-        cout << "  Black-Scholes PV = " << fixed << setprecision(4) << pvBS << endl;
+// ========== Output ==========
+void outPutResult(const vector<TradeResult>& results) {
+    vector<string> output;
+    for (const auto& r : results) {
+        string row = to_string(r.id) + "; " + r.tradeInfo +
+            "; PV:" + to_string(r.PV) +
+            "; Delta:" + to_string(r.DV01) +
+            "; Vega:" + to_string(r.Vega);
+        output.push_back(row);
     }
-    else {
-        cout << "[WARN] No European option found for comparison." << endl;
+    outputToFile("output.txt", output);
+}
+
+// ========== Main ==========
+int main() {
+    // 1. Date Setup
+    time_t t = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    tm localTime;
+    localtime_s(&localTime, &t);
+    Date valueDate(localTime.tm_year + 1900, localTime.tm_mon + 1, localTime.tm_mday);
+    cout << "[INFO] Valuation Date: " << valueDate << "\n" << endl;
+
+    // 2. Market Setup
+    auto mkt = make_shared<Market>(valueDate);
+    loadIrCurve(*mkt, "usd_curve.txt", "USD-SOFR");
+    loadIrCurve(*mkt, "sgd_curve.txt", "SGD-SORA");
+
+    // Add aliases
+    mkt->addCurve("USD-GOV", mkt->getCurve("USD-SOFR"));
+    mkt->addCurve("SGD-GOV", mkt->getCurve("SGD-SORA"));
+
+    loadVolCurve(*mkt, "vol.txt", "LOGVOL");
+
+    mkt->addStockPrice("APPL", 652.0);
+    mkt->addStockPrice("SP500", 5035.7);
+    mkt->addStockPrice("STI", 3420);
+
+    // 3. Load Portfolio
+    vector<shared_ptr<Trade>> portfolio;
+    loadTrade(portfolio);
+
+    // 4. Pricing & Risk
+    auto pricer = make_shared<CRRBinomialTreePricer>(50);
+    vector<TradeResult> results;
+
+    double curve_shock = 0.0001, vol_shock = 0.01, price_shock = 0.0;
+
+    for (size_t i = 0; i < portfolio.size(); ++i) {
+        auto& trade = portfolio[i];
+        cout << "[INFO] Pricing Trade #" << (i + 1) << "..." << endl;
+
+        TradeResult r;
+        r.id = i + 1;
+        r.tradeInfo = trade->getType() + " " + trade->getUnderlying();
+
+        r.PV = pricer->price(*mkt, trade);
+
+        RiskEngine engine(*mkt, curve_shock, vol_shock, price_shock);
+        engine.computeRisk("dv01", trade, true);
+        for (const auto& [_, v] : engine.getResult()) r.DV01 += v;
+
+        engine.computeRisk("vega", trade, true);
+        for (const auto& [_, v] : engine.getResult()) r.Vega += v;
+
+        results.push_back(r);
     }
 
-	//Comparison tween American and European options
-    bool callDone = false, putDone = false;
-
-    for (Trade* e : myPortfolio) {
-        if (e->getType() != "EuropeanOption") continue;
-        auto* eOpt = dynamic_cast<EuropeanOption*>(e);
-        if (!eOpt) continue;
-
-        for (Trade* a : myPortfolio) {
-            if (a->getType() != "AmericanOption") continue;
-            auto* aOpt = dynamic_cast<AmericanOption*>(a);
-            if (!aOpt) continue;
-
-            bool sameStrike = std::fabs(eOpt->getStrike() - aOpt->getStrike()) < 1e-6;
-            bool sameExpiry = eOpt->getExpiry() == aOpt->getExpiry();
-            bool sameUnderlying = eOpt->getUnderlying() == aOpt->getUnderlying();
-            bool sameType = eOpt->getOptionType() == aOpt->getOptionType();
-
-            if (sameStrike && sameExpiry && sameUnderlying && sameType) {
-                double pvEuro = treePricer->price(mkt1, eOpt);
-                double pvAmer = treePricer->price(mkt1, aOpt);
-                string optLabel = (eOpt->getOptionType() == OptionType::Call) ? "Call" : "Put";
-
-                cout << "\n--- [Comparison B] " << optLabel << " Option (American vs European) ---" << endl;
-                cout << "Underlying: " << eOpt->getUnderlying()
-                    << ", Strike: " << eOpt->getStrike()
-                    << ", Expiry: " << eOpt->getExpiry() << endl;
-                cout << "  European PV = " << fixed << setprecision(4) << pvEuro << endl;
-                cout << "  American PV = " << fixed << setprecision(4) << pvAmer << endl;
-
-                if (optLabel == "Call") callDone = true;
-                if (optLabel == "Put") putDone = true;
-
-                break;  // break inner loop: one match is enough
-            }
-        }
-
-        if (callDone && putDone) break;  // break outer loop if both found
-    }
-
-    // ===== Cleanup =====
-    for (auto* trade : myPortfolio) delete trade;
-    myPortfolio.clear();
-    delete treePricer;
-
-    cout << "\nProject build successfully!" << endl;
+    // 5. Output
+    outPutResult(results);
+    cout << "Pricing and risk completed. Results written to output.txt" << endl;
     return 0;
 }

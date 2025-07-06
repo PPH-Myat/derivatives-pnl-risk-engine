@@ -161,6 +161,10 @@ namespace util {
     }
 
     inline Date dateAddTenor(const Date& start, const std::string& tenorStr) {
+        if (tenorStr.empty()) {
+            throw std::invalid_argument("Empty tenor string passed to dateAddTenor()");
+        }
+
         Date result = start;
         std::string t = to_upper(tenorStr);
 

@@ -1,24 +1,32 @@
 #include <cmath>
 #include <stdexcept>
-#include "tree_pricer.h"
+#include <vector>
 
-// Constructor
+#include "tree_pricer.h"
+#include "market.h"
+#include "trade.h"
+#include "tree_product.h"
+
+// ===========================
+// BinomialTreePricer Base
+// ===========================
+
 BinomialTreePricer::BinomialTreePricer(int N)
     : nTimeSteps(N), u(0), d(0), p(0), currentSpot(0) {
-    // states now local in priceTree, so no need to pre-allocate here
+    // states will be local to priceTree
 }
 
-// Unified pricing entry point
 double BinomialTreePricer::price(const Market& mkt, std::shared_ptr<Trade> trade) const {
-    if (!trade) throw std::invalid_argument("Null trade pointer");
+    if (!trade) throw std::invalid_argument("[ERROR] Null trade pointer passed to pricer.");
 
     auto* treePtr = dynamic_cast<TreeProduct*>(trade.get());
-    if (!treePtr) return trade->pv(mkt);
+    if (!treePtr) {
+        return trade->pv(mkt);  // fallback to analytical PV if not tree-compatible
+    }
 
     return priceTree(mkt, *treePtr) * trade->getNotional();
 }
 
-// Core tree pricing logic
 double BinomialTreePricer::priceTree(const Market& mkt, const TreeProduct& trade) const {
     double T = (trade.getExpiry() - mkt.asOf) / 365.0;
     double dt = T / nTimeSteps;
@@ -32,8 +40,9 @@ double BinomialTreePricer::priceTree(const Market& mkt, const TreeProduct& trade
     std::vector<double> states(nTimeSteps + 1);
 
     // Terminal payoff
-    for (int i = 0; i <= nTimeSteps; ++i)
+    for (int i = 0; i <= nTimeSteps; ++i) {
         states[i] = trade.payoff(getSpot(nTimeSteps, i));
+    }
 
     // Backward induction
     for (int k = nTimeSteps - 1; k >= 0; --k) {
@@ -47,16 +56,22 @@ double BinomialTreePricer::priceTree(const Market& mkt, const TreeProduct& trade
     return states[0];
 }
 
-// Utility functions
 double BinomialTreePricer::getSpot(int ti, int si) const {
     return currentSpot * std::pow(u, si) * std::pow(d, ti - si);
 }
-double BinomialTreePricer::getProbUp() const { return p; }
-double BinomialTreePricer::getProbDown() const { return 1.0 - p; }
+
+double BinomialTreePricer::getProbUp() const {
+    return p;
+}
+
+double BinomialTreePricer::getProbDown() const {
+    return 1.0 - p;
+}
 
 // ===========================
-// CRR Binomial Tree Setup
+// CRR Tree
 // ===========================
+
 CRRBinomialTreePricer::CRRBinomialTreePricer(int N)
     : BinomialTreePricer(N) {
 }
@@ -69,8 +84,9 @@ void CRRBinomialTreePricer::modelSetup(double S0, double sigma, double rate, dou
 }
 
 // ===========================
-// Jarrow-Rudd Binomial Tree Setup
+// Jarrow-Rudd Tree
 // ===========================
+
 JRRNBinomialTreePricer::JRRNBinomialTreePricer(int N)
     : BinomialTreePricer(N) {
 }
